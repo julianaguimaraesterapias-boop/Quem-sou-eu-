@@ -83,13 +83,14 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-6 pt-12">
         <AnimatePresence mode="wait">
           {selectedDay ? (
-            <DayDetail
-              key="detail"
-              day={selectedDay}
-              isCompleted={completedDays.includes(selectedDay.id)}
-              onBack={() => setSelectedDay(null)}
-              onToggleComplete={() => toggleComplete(selectedDay.id)}
-            />
+            <div key="detail">
+              <DayDetail
+                day={selectedDay}
+                isCompleted={completedDays.includes(selectedDay.id)}
+                onBack={() => setSelectedDay(null)}
+                onToggleComplete={() => toggleComplete(selectedDay.id)}
+              />
+            </div>
           ) : (
             <motion.div
               key="grid"
@@ -112,13 +113,14 @@ export default function App() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {journeyData.map((day) => (
-                  <DayCard
-                    key={day.id}
-                    day={day}
-                    isCompleted={completedDays.includes(day.id)}
-                    isSelected={false}
-                    onClick={() => setSelectedDay(day)}
-                  />
+                  <div key={day.id}>
+                    <DayCard
+                      day={day}
+                      isCompleted={completedDays.includes(day.id)}
+                      isSelected={false}
+                      onClick={() => setSelectedDay(day)}
+                    />
+                  </div>
                 ))}
               </div>
             </motion.div>

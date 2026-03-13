@@ -1,6 +1,10 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 import { Play, Pause, Loader2, Volume2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { db, auth } from "../firebase";
+import { collection, query, where, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
+import { signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import { handleFirestoreError, OperationType } from "../firestoreErrorHandler";
 
 interface AudioPlayerProps {
   prompt: string;
@@ -11,9 +15,25 @@ export default function AudioPlayer({ prompt, dayId }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+
+  // Ensure user is authenticated (anonymously if needed)
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        try {
+          await signInAnonymously(auth);
+        } catch (err) {
+          console.error("Auth error:", err);
+        }
+      }
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Helper to add WAV header to raw PCM data
   const addWavHeader = (pcmData: Uint8Array, sampleRate: number) => {
@@ -51,10 +71,45 @@ export default function AudioPlayer({ prompt, dayId }: AudioPlayerProps) {
     return URL.createObjectURL(blob);
   };
 
+  const base64ToBlobUrl = (base64: string) => {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return addWavHeader(bytes, 24000);
+  };
+
+  const loadSavedAudio = async () => {
+    if (!auth.currentUser) return;
+    
+    const path = "daily_audios";
+    try {
+      const q = query(
+        collection(db, path),
+        where("dayId", "==", dayId),
+        where("userId", "==", auth.currentUser.uid)
+      );
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const data = querySnapshot.docs[0].data();
+        const url = base64ToBlobUrl(data.audioBase64);
+        setAudioUrl(url);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, path);
+    }
+  };
+
   const generateAudio = async () => {
     if (audioUrl) {
       setIsPlaying(true);
       audioRef.current?.play();
+      return;
+    }
+
+    if (!auth.currentUser) {
+      setError("Aguardando autenticação...");
       return;
     }
 
@@ -79,14 +134,20 @@ export default function AudioPlayer({ prompt, dayId }: AudioPlayerProps) {
       const base64Audio = part?.inlineData?.data;
       
       if (base64Audio) {
-        const binaryString = atob(base64Audio);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+        // Save to Firestore
+        const path = "daily_audios";
+        try {
+          await addDoc(collection(db, path), {
+            dayId,
+            audioBase64: base64Audio,
+            userId: auth.currentUser.uid,
+            createdAt: serverTimestamp()
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.CREATE, path);
         }
-        
-        // Gemini TTS returns 24000Hz PCM by default
-        const url = addWavHeader(bytes, 24000);
+
+        const url = base64ToBlobUrl(base64Audio);
         setAudioUrl(url);
         setIsPlaying(true);
       } else {
@@ -119,11 +180,14 @@ export default function AudioPlayer({ prompt, dayId }: AudioPlayerProps) {
     }
   };
 
-  // Reset when day changes
+  // Reset and load saved audio when day changes or auth is ready
   useEffect(() => {
     setAudioUrl(null);
     setIsPlaying(false);
-  }, [dayId]);
+    if (isAuthReady) {
+      loadSavedAudio();
+    }
+  }, [dayId, isAuthReady]);
 
   return (
     <div className="flex items-center gap-4 p-4 bg-stone-100 rounded-2xl border border-stone-200">

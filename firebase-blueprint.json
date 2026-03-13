@@ -1,0 +1,35 @@
+{
+  "entities": {
+    "DailyAudio": {
+      "title": "Daily Audio",
+      "description": "Stores generated audio for a specific day",
+      "type": "object",
+      "properties": {
+        "dayId": {
+          "type": "integer",
+          "description": "The ID of the journey day"
+        },
+        "audioBase64": {
+          "type": "string",
+          "description": "Base64 encoded audio data"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the audio was generated"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who generated it"
+        }
+      },
+      "required": ["dayId", "audioBase64", "userId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/daily_audios/{audioId}": {
+      "schema": "DailyAudio",
+      "description": "Collection of generated daily audios"
+    }
+  }
+}

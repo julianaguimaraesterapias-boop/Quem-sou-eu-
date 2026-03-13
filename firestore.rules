@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: daily_audios
+    // Document ID: auto-generated or composite
+    // Fields:
+    //   - dayId: integer (required) - The ID of the journey day
+    //   - audioBase64: string (required, max 800kb) - Base64 encoded audio data
+    //   - createdAt: timestamp (required) - When the audio was generated
+    //   - userId: string (required) - The UID of the user who generated it
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidAudio(data) {
+      return data.dayId is int &&
+             data.audioBase64 is string && data.audioBase64.size() < 800000 &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.createdAt is timestamp;
+    }
+
+    match /daily_audios/{audioId} {
+      // Users can read their own generated audios
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      
+      // Users can create their own audios
+      allow create: if isAuthenticated() && isValidAudio(request.resource.data);
+      
+      // Audios are typically not updated or deleted in this app's flow
+      allow update, delete: if false;
+    }
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
